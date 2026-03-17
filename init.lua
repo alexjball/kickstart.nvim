@@ -191,11 +191,72 @@ vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagn
 
 vim.keymap.set('n', '<leader>e', ':edit $MYVIMRC<CR>', { desc = '[E]dit nvim config' })
 
--- Focus (e)xplorer neo-tree
-vim.keymap.set('n', '|', ':Neotree reveal_force_cwd<CR>', { noremap = true, silent = true })
---vim.keymap.set('n', 'gd', ':Neotree float reveal_file=<cfile> reveal_force_cwd<CR>', { noremap = true, silent = true })
+-- Focus (e)xplorer neo-tree  (Shift+\ toggles the sidebar)
+vim.keymap.set('n', '|', ':Neotree toggle reveal_force_cwd<CR>', { noremap = true, silent = true })
 vim.keymap.set('n', '<leader>b', ':Neotree toggle show buffers right<CR>', { noremap = true, silent = true })
 vim.keymap.set('n', '<leader>g', ':Neotree float git_status<CR>', { noremap = true, silent = true })
+
+-- Open current working directory in Zed
+vim.keymap.set('n', '<leader>oz', function()
+  vim.fn.jobstart({ 'zed', vim.fn.getcwd() }, { detach = true })
+end, { desc = '[O]pen in [Z]ed' })
+
+-- :q from any window quits nvim when there's only one editor + neo-tree
+vim.api.nvim_create_autocmd('QuitPre', {
+  callback = function()
+    local tree_wins = {}
+    local floating_wins = {}
+    local editor_wins = {}
+    local wins = vim.api.nvim_list_wins()
+    for _, w in ipairs(wins) do
+      local bufname = vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(w))
+      if vim.api.nvim_win_get_config(w).relative ~= '' then
+        table.insert(floating_wins, w)
+      elseif bufname:match 'neo%-tree' ~= nil then
+        table.insert(tree_wins, w)
+      else
+        table.insert(editor_wins, w)
+      end
+    end
+    local cur_buf = vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(0))
+    local quitting_from_tree = cur_buf:match 'neo%-tree' ~= nil
+    if #editor_wins <= 1 and #tree_wins > 0 then
+      if quitting_from_tree then
+        -- Quitting from tree: close tree, then tell the editor to quit too
+        for _, w in ipairs(tree_wins) do
+          vim.api.nvim_win_close(w, true)
+        end
+        vim.schedule(function()
+          vim.cmd 'confirm quit'
+        end)
+      else
+        -- Quitting from editor: close tree so nvim exits cleanly
+        for _, w in ipairs(tree_wins) do
+          vim.api.nvim_win_close(w, true)
+        end
+      end
+    end
+  end,
+})
+
+-- When nvim is opened on a directory: cd into it, replace the dir buffer
+-- with an empty scratch buffer, and open neo-tree in that directory.
+vim.api.nvim_create_autocmd('VimEnter', {
+  callback = function(data)
+    local directory = vim.fn.isdirectory(data.file) == 1
+    if not directory then
+      return
+    end
+    vim.cmd.cd(data.file)
+    -- wipe the directory buffer that netrw/mini.files would have opened
+    vim.api.nvim_buf_delete(data.buf, { force = true })
+    -- create a clean empty buffer
+    vim.cmd 'enew'
+    -- open neo-tree sidebar, then return focus to the editor
+    vim.cmd 'Neotree show reveal_force_cwd'
+    vim.cmd 'wincmd l'
+  end,
+})
 
 -- MiniFiles
 -- https://github.com/nvim-mini/mini.nvim/blob/main/doc/mini-files.txt
@@ -973,7 +1034,7 @@ require('lazy').setup({
       require('mini.files').setup {
         options = {
           permanent_delete = false,
-          use_as_default_explorer = true,
+          use_as_default_explorer = false,
         },
       }
 
@@ -1055,42 +1116,6 @@ require('lazy').setup({
   -- In normal mode type `<space>sh` then write `lazy.nvim-plugin`
   -- you can continue same window with `<space>sr` which resumes last telescope search
   {
-    'stevearc/oil.nvim',
-    ---@module 'oil'
-    ---@type oil.SetupOpts
-    opts = {
-      default_file_explorer = false,
-      delete_to_trash = true,
-      watch_for_changes = true,
-      view_options = {
-        show_hidden = true,
-      },
-      sort = {
-        -- sort order can be "asc" or "desc"
-        -- see :help oil-columns to see which columns are sortable
-        { 'type', 'asc' },
-        { 'name', 'asc' },
-        { 'mtime', 'desc' },
-      },
-      keymaps = {
-        ['gd'] = {
-          desc = 'Toggle file detail view',
-          callback = function()
-            oil_file_details = not oil_file_details
-            if oil_file_details then
-              require('oil').set_columns { 'icon', 'permissions', 'size', 'mtime' }
-            else
-              require('oil').set_columns { 'icon' }
-            end
-          end,
-        },
-      },
-    },
-    dependencies = { 'nvim-tree/nvim-web-devicons' }, -- use if you prefer nvim-web-devicons
-    -- Lazy loading is not recommended because it is very tricky to make it work correctly in all situations.
-    lazy = false,
-  },
-  {
     'nvim-neo-tree/neo-tree.nvim',
     branch = 'v3.x',
     dependencies = {
@@ -1102,7 +1127,15 @@ require('lazy').setup({
     ---@module 'neo-tree'
     ---@type neotree.Config
     opts = {
+      window = {
+        mappings = {
+          -- Let <leader> keys fall through to normal Neovim mappings
+          -- so Telescope etc. work even when neo-tree is focused
+          ['<space>'] = 'none',
+        },
+      },
       filesystem = {
+        hijack_netrw_behavior = 'disabled', -- we handle directory opens via autocmd
         filtered_items = {
           hide_dotfiles = false,
           hide_gitignored = true,
