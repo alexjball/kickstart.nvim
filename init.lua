@@ -102,7 +102,7 @@ vim.g.have_nerd_font = true
 vim.o.number = true
 -- You can also add relative line numbers, to help with jumping.
 --  Experiment for yourself to see if you like it!
--- vim.o.relativenumber = true
+vim.o.relativenumber = true
 
 -- Enable mouse mode, can be useful for resizing splits for example!
 vim.o.mouse = 'a'
@@ -176,11 +176,58 @@ vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 -- Diagnostic keymaps
 vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
 
+vim.keymap.set('n', '<leader>e', ':edit $MYVIMRC<CR>', { desc = '[E]dit nvim config' })
+
 -- Focus (e)xplorer neo-tree
-vim.keymap.set('n', '|', ':Neotree reveal<CR>', { noremap = true, silent = true })
+vim.keymap.set('n', '|', ':Neotree reveal_force_cwd<CR>', { noremap = true, silent = true })
 --vim.keymap.set('n', 'gd', ':Neotree float reveal_file=<cfile> reveal_force_cwd<CR>', { noremap = true, silent = true })
 vim.keymap.set('n', '<leader>b', ':Neotree toggle show buffers right<CR>', { noremap = true, silent = true })
 vim.keymap.set('n', '<leader>g', ':Neotree float git_status<CR>', { noremap = true, silent = true })
+
+-- MiniFiles
+-- https://github.com/nvim-mini/mini.nvim/blob/main/doc/mini-files.txt
+
+local minifiles_toggle = function(...)
+  if not MiniFiles.close() then
+    MiniFiles.open(...)
+  end
+end
+
+-- Bind to <leader>f in normal mode
+vim.keymap.set('n', '<leader>m', minifiles_toggle, { desc = 'Toggle MiniFiles' })
+
+-- Set focused directory as current working directory
+local set_cwd = function()
+  local path = (MiniFiles.get_fs_entry() or {}).path
+  if path == nil then
+    return vim.notify 'Cursor is not on valid entry'
+  end
+  vim.fn.chdir(vim.fs.dirname(path))
+end
+
+-- Yank in register full path of entry under cursor
+local yank_path = function()
+  local path = (MiniFiles.get_fs_entry() or {}).path
+  if path == nil then
+    return vim.notify 'Cursor is not on valid entry'
+  end
+  vim.fn.setreg(vim.v.register, path)
+end
+
+-- Open path with system default handler (useful for non-text files)
+local ui_open = function()
+  vim.ui.open(MiniFiles.get_fs_entry().path)
+end
+
+vim.api.nvim_create_autocmd('User', {
+  pattern = 'MiniFilesBufferCreate',
+  callback = function(args)
+    local b = args.data.buf_id
+    vim.keymap.set('n', 'g~', set_cwd, { buffer = b, desc = 'Set cwd' })
+    vim.keymap.set('n', 'gX', ui_open, { buffer = b, desc = 'OS open' })
+    vim.keymap.set('n', 'gy', yank_path, { buffer = b, desc = 'Yank path' })
+  end,
+})
 
 -- Exit terminal mode in the builtin terminal with a shortcut that is a bit easier
 -- for people to discover. Otherwise, you normally need to press <C-\><C-n>, which
@@ -239,6 +286,22 @@ end
 ---@type vim.Option
 local rtp = vim.opt.rtp
 rtp:prepend(lazypath)
+
+function _G.SelectAndOpenFolder()
+  vim.api.nvim_create_autocmd('VimEnter', {
+    once = true,
+    callback = function()
+      vim.cmd 'Neotree focus'
+      vim.defer_fn(function()
+        require('telescope').extensions.zoxide.list {
+          prompt_title = 'Zoxide',
+          previewer = false,
+          layout_config = { width = 0.6, height = 0.6 },
+        }
+      end, 100)
+    end,
+  })
+end
 
 -- [[ Configure and install plugins ]]
 --
@@ -386,6 +449,8 @@ require('lazy').setup({
 
       -- Useful for getting pretty icons, but requires a Nerd Font.
       { 'nvim-tree/nvim-web-devicons', enabled = vim.g.have_nerd_font },
+      { 'nvim-lua/popup.nvim' },
+      { 'jvgrootveld/telescope-zoxide' },
     },
     config = function()
       -- Telescope is a fuzzy finder that comes with a lot of different things that
@@ -423,6 +488,19 @@ require('lazy').setup({
           ['ui-select'] = {
             require('telescope.themes').get_dropdown(),
           },
+          zoxide = {
+            prompt_title = '[ Zoxide directories ]',
+            mappings = {
+              default = {
+                action = function(selection)
+                  vim.cmd.tcd(selection.path)
+                end,
+                after_action = function(selection)
+                  vim.notify("Current working directory set to '" .. selection.path .. "'", vim.log.levels.INFO)
+                end,
+              },
+            },
+          },
         },
       }
 
@@ -442,7 +520,11 @@ require('lazy').setup({
       vim.keymap.set('n', '<leader>sr', builtin.resume, { desc = '[S]earch [R]esume' })
       vim.keymap.set('n', '<leader>s.', builtin.oldfiles, { desc = '[S]earch Recent Files ("." for repeat)' })
       vim.keymap.set('n', '<leader><leader>', builtin.buffers, { desc = '[ ] Find existing buffers' })
-
+      vim.keymap.set('n', '<leader>sc', function()
+        builtin.colorscheme {
+          enable_preview = true,
+        }
+      end, { desc = '[S]earch [C]olorscheme with Preview' })
       -- Slightly advanced example of overriding default behavior and theme
       vim.keymap.set('n', '<leader>/', function()
         -- You can pass additional configuration to Telescope to change the theme, layout, etc.
@@ -465,6 +547,14 @@ require('lazy').setup({
       vim.keymap.set('n', '<leader>sn', function()
         builtin.find_files { cwd = vim.fn.stdpath 'config' }
       end, { desc = '[S]earch [N]eovim files' })
+
+      vim.keymap.set('n', '<leader>z', function()
+        require('telescope').extensions.zoxide.list {
+          prompt_title = 'Zoxide',
+          previewer = false,
+          layout_config = { width = 0.6, height = 0.6 },
+        }
+      end, { desc = 'Zoxide' })
     end,
   },
 
@@ -850,7 +940,7 @@ require('lazy').setup({
       appearance = {
         -- 'mono' (default) for 'Nerd Font Mono' or 'normal' for 'Nerd Font'
         -- Adjusts spacing to ensure icons are aligned
-        nerd_font_variant = 'mono',
+        nerd_font_variant = 'normal',
       },
 
       completion = {
@@ -881,7 +971,21 @@ require('lazy').setup({
       signature = { enabled = true },
     },
   },
-
+  {
+    'loctvl842/monokai-pro.nvim',
+    name = 'monakai-pro',
+    priority = 1000,
+  },
+  {
+    'rebelot/kanagawa.nvim',
+    name = 'kanagawa',
+    priority = 1000,
+  },
+  {
+    'catppuccin/nvim',
+    name = 'catppuccin',
+    priority = 1000,
+  },
   { -- You can easily change to a different colorscheme.
     -- Change the name of the colorscheme plugin below, and then
     -- change the command in the config to whatever the name of that colorscheme is.
@@ -924,6 +1028,13 @@ require('lazy').setup({
       -- - sd'   - [S]urround [D]elete [']quotes
       -- - sr)'  - [S]urround [R]eplace [)] [']
       require('mini.surround').setup()
+
+      require('mini.files').setup {
+        options = {
+          permanent_delete = false,
+          use_as_default_explorer = true,
+        },
+      }
 
       -- Simple and easy statusline.
       --  You could remove this setup call if you don't like it,
@@ -1044,7 +1155,35 @@ require('lazy').setup({
     ---@module 'neo-tree'
     ---@type neotree.Config
     opts = {
-      -- options go here
+      filesystem = {
+        filtered_items = {
+          hide_dotfiles = false,
+          hide_gitignored = true,
+          never_show = {
+            '.git',
+          },
+        },
+      },
+    },
+  },
+  {
+    'numToStr/Comment.nvim',
+    opts = {
+      -- add any options here
+    },
+  },
+  {
+    'mg979/vim-visual-multi',
+    branch = 'master',
+  },
+  {
+    'knubie/vim-kitty-navigator',
+    build = 'cp ./*.py ~/.config/kitty/',
+  },
+  {
+    'sindrets/diffview.nvim',
+    dependencies = {
+      'nvim-tree/nvim-web-devicons',
     },
   },
 }, {
