@@ -197,9 +197,7 @@ vim.keymap.set('n', '<leader>b', ':Neotree toggle show buffers right<CR>', { nor
 vim.keymap.set('n', '<leader>g', ':Neotree float git_status<CR>', { noremap = true, silent = true })
 
 -- Open current working directory in Zed
-vim.keymap.set('n', '<leader>oz', function()
-  vim.fn.jobstart({ 'zed', vim.fn.getcwd() }, { detach = true })
-end, { desc = '[O]pen in [Z]ed' })
+vim.keymap.set('n', '<leader>oz', function() vim.fn.jobstart({ 'zed', vim.fn.getcwd() }, { detach = true }) end, { desc = '[O]pen in [Z]ed' })
 
 -- :q from any window quits nvim when there's only one editor + neo-tree
 vim.api.nvim_create_autocmd('QuitPre', {
@@ -226,9 +224,7 @@ vim.api.nvim_create_autocmd('QuitPre', {
         for _, w in ipairs(tree_wins) do
           vim.api.nvim_win_close(w, true)
         end
-        vim.schedule(function()
-          vim.cmd 'confirm quit'
-        end)
+        vim.schedule(function() vim.cmd 'confirm quit' end)
       else
         -- Quitting from editor: close tree so nvim exits cleanly
         for _, w in ipairs(tree_wins) do
@@ -244,9 +240,7 @@ vim.api.nvim_create_autocmd('QuitPre', {
 vim.api.nvim_create_autocmd('VimEnter', {
   callback = function(data)
     local directory = vim.fn.isdirectory(data.file) == 1
-    if not directory then
-      return
-    end
+    if not directory then return end
     vim.cmd.cd(data.file)
     -- wipe the directory buffer that netrw/mini.files would have opened
     vim.api.nvim_buf_delete(data.buf, { force = true })
@@ -262,9 +256,7 @@ vim.api.nvim_create_autocmd('VimEnter', {
 -- https://github.com/nvim-mini/mini.nvim/blob/main/doc/mini-files.txt
 
 local minifiles_toggle = function(...)
-  if not MiniFiles.close() then
-    MiniFiles.open(...)
-  end
+  if not MiniFiles.close() then MiniFiles.open(...) end
 end
 
 -- Bind to <leader>f in normal mode
@@ -273,25 +265,19 @@ vim.keymap.set('n', '<leader>m', minifiles_toggle, { desc = 'Toggle MiniFiles' }
 -- Set focused directory as current working directory
 local set_cwd = function()
   local path = (MiniFiles.get_fs_entry() or {}).path
-  if path == nil then
-    return vim.notify 'Cursor is not on valid entry'
-  end
+  if path == nil then return vim.notify 'Cursor is not on valid entry' end
   vim.fn.chdir(vim.fs.dirname(path))
 end
 
 -- Yank in register full path of entry under cursor
 local yank_path = function()
   local path = (MiniFiles.get_fs_entry() or {}).path
-  if path == nil then
-    return vim.notify 'Cursor is not on valid entry'
-  end
+  if path == nil then return vim.notify 'Cursor is not on valid entry' end
   vim.fn.setreg(vim.v.register, path)
 end
 
 -- Open path with system default handler (useful for non-text files)
-local ui_open = function()
-  vim.ui.open(MiniFiles.get_fs_entry().path)
-end
+local ui_open = function() vim.ui.open(MiniFiles.get_fs_entry().path) end
 
 vim.api.nvim_create_autocmd('User', {
   pattern = 'MiniFilesBufferCreate',
@@ -362,13 +348,16 @@ function _G.SelectAndOpenFolder()
     once = true,
     callback = function()
       vim.cmd 'Neotree focus'
-      vim.defer_fn(function()
-        require('telescope').extensions.zoxide.list {
-          prompt_title = 'Zoxide',
-          previewer = false,
-          layout_config = { width = 0.6, height = 0.6 },
-        }
-      end, 100)
+      vim.defer_fn(
+        function()
+          require('telescope').extensions.zoxide.list {
+            prompt_title = 'Zoxide',
+            previewer = false,
+            layout_config = { width = 0.6, height = 0.6 },
+          }
+        end,
+        100
+      )
     end,
   })
 end
@@ -524,13 +513,24 @@ require('lazy').setup({
       require('telescope').setup {
         -- You can put your default mappings / updates / etc. in here
         --  All the info you're looking for is in `:help telescope.setup()`
-        --
-        -- defaults = {
-        --   mappings = {
-        --     i = { ['<c-enter>'] = 'to_fuzzy_refine' },
-        --   },
-        -- },
-        -- pickers = {}
+        defaults = {
+          -- Follow symlinks so symlinked repos are searchable
+          follow = true,
+          mappings = {
+            i = { ['<c-enter>'] = 'to_fuzzy_refine' },
+          },
+        },
+        pickers = {
+          find_files = {
+            follow = true, -- fd -L
+          },
+          live_grep = {
+            additional_args = { '--follow' }, -- rg -L
+          },
+          grep_string = {
+            additional_args = { '--follow' },
+          },
+        },
         extensions = {
           ['ui-select'] = {
             require('telescope.themes').get_dropdown(),
@@ -539,12 +539,8 @@ require('lazy').setup({
             prompt_title = '[ Zoxide directories ]',
             mappings = {
               default = {
-                action = function(selection)
-                  vim.cmd.tcd(selection.path)
-                end,
-                after_action = function(selection)
-                  vim.notify("Current working directory set to '" .. selection.path .. "'", vim.log.levels.INFO)
-                end,
+                action = function(selection) vim.cmd.tcd(selection.path) end,
+                after_action = function(selection) vim.notify("Current working directory set to '" .. selection.path .. "'", vim.log.levels.INFO) end,
               },
             },
           },
@@ -568,11 +564,16 @@ require('lazy').setup({
       vim.keymap.set('n', '<leader>s.', builtin.oldfiles, { desc = '[S]earch Recent Files ("." for repeat)' })
       vim.keymap.set('n', '<leader>sc', builtin.commands, { desc = '[S]earch [C]ommands' })
       vim.keymap.set('n', '<leader><leader>', builtin.buffers, { desc = '[ ] Find existing buffers' })
-      vim.keymap.set('n', '<leader>sc', function()
-        builtin.colorscheme {
-          enable_preview = true,
-        }
-      end, { desc = '[S]earch [C]olorscheme with Preview' })
+      vim.keymap.set(
+        'n',
+        '<leader>sc',
+        function()
+          builtin.colorscheme {
+            enable_preview = true,
+          }
+        end,
+        { desc = '[S]earch [C]olorscheme with Preview' }
+      )
       -- Slightly advanced example of overriding default behavior and theme
 
       -- This runs on LSP attach per buffer (see main LSP attach function in 'neovim/nvim-lspconfig' config for more info,
@@ -633,17 +634,20 @@ require('lazy').setup({
       )
 
       -- Shortcut for searching your Neovim configuration files
-      vim.keymap.set('n', '<leader>sn', function()
-        builtin.find_files { cwd = vim.fn.stdpath 'config' }
-      end, { desc = '[S]earch [N]eovim files' })
+      vim.keymap.set('n', '<leader>sn', function() builtin.find_files { cwd = vim.fn.stdpath 'config' } end, { desc = '[S]earch [N]eovim files' })
 
-      vim.keymap.set('n', '<leader>z', function()
-        require('telescope').extensions.zoxide.list {
-          prompt_title = 'Zoxide',
-          previewer = false,
-          layout_config = { width = 0.6, height = 0.6 },
-        }
-      end, { desc = 'Zoxide' })
+      vim.keymap.set(
+        'n',
+        '<leader>z',
+        function()
+          require('telescope').extensions.zoxide.list {
+            prompt_title = 'Zoxide',
+            previewer = false,
+            layout_config = { width = 0.6, height = 0.6 },
+          }
+        end,
+        { desc = 'Zoxide' }
+      )
     end,
   },
 
@@ -1061,10 +1065,22 @@ require('lazy').setup({
     lazy = false,
     build = ':TSUpdate',
     branch = 'main',
+    dependencies = {
+      { 'mks-h/treesitter-autoinstall.nvim' },
+    },
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter-intro`
     config = function()
-      local parsers = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' }
+      local parsers = {
+        'bash', 'c', 'css', 'diff', 'dockerfile',
+        'html', 'javascript', 'json', 'jsonc',
+        'lua', 'luadoc', 'markdown', 'markdown_inline',
+        'python', 'query', 'sql', 'toml', 'tsx',
+        'typescript', 'vim', 'vimdoc', 'yaml',
+      }
       require('nvim-treesitter').install(parsers)
+
+      -- Auto-install parsers when opening files with no parser installed
+      require('treesitter-autoinstall').setup()
       vim.api.nvim_create_autocmd('FileType', {
         callback = function(args)
           local buf, filetype = args.buf, args.match
@@ -1072,10 +1088,11 @@ require('lazy').setup({
           local language = vim.treesitter.language.get_lang(filetype)
           if not language then return end
 
-          -- check if parser exists and load it
-          if not vim.treesitter.language.add(language) then return end
+          -- skip filetypes with no parser (plugin UIs like neo-tree, lazy, etc.)
+          local ok = pcall(vim.treesitter.language.add, language)
+          if not ok then return end
           -- enables syntax highlighting and other treesitter features
-          vim.treesitter.start(buf, language)
+          pcall(vim.treesitter.start, buf, language)
 
           -- enables treesitter based folds
           -- for more info on folds see `:help folds`
@@ -1102,7 +1119,6 @@ require('lazy').setup({
   -- require 'kickstart.plugins.indent_line',
   -- require 'kickstart.plugins.lint',
   -- require 'kickstart.plugins.autopairs',
-  -- require 'kickstart.plugins.neo-tree',
   -- require 'kickstart.plugins.gitsigns', -- adds gitsigns recommended keymaps
 
   -- NOTE: The import below can automatically add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
@@ -1128,6 +1144,7 @@ require('lazy').setup({
     ---@type neotree.Config
     opts = {
       window = {
+        width = 25,
         mappings = {
           -- Let <leader> keys fall through to normal Neovim mappings
           -- so Telescope etc. work even when neo-tree is focused
